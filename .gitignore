@@ -1,4 +1,6 @@
 /Test
 /Train
-/image
-/depth
+/TestData
+/TrainData
+/PureData
+/Data
