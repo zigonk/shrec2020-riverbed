@@ -72,7 +72,3 @@ def projection_model_point_cloud(pcd):
   mesh.points = o3d.utility.Vector3dVector(X_with_depth)
   # mesh.compute_vertex_normals()
   return mesh
-
-mesh = o3d.io.read_triangle_mesh("./Train/Class8_1.ply")
-mesh = projection_model(mesh)
-o3d.io.write_triangle_mesh("./test.ply", mesh)
