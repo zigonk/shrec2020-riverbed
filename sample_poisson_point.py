@@ -23,6 +23,7 @@ def generate_poisson_point(model3d_path, poisson_point_path):
     if not os.path.exists(poisson_point_path):
         os.makedirs(poisson_point_path)
     for f in os.listdir(model3d_path):
+        print(f)
         path = os.path.join(model3d_path, f)
         pos_ext = f.find('.')
         file_name = f[:pos_ext]
