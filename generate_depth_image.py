@@ -4,6 +4,7 @@ import open3d as o3d
 import numpy as np
 import cv2
 import math
+from preprocess_data import *
 
 def generate_depth_image(model_path, save_path):
     if not os.path.exists(save_path):
@@ -15,7 +16,7 @@ def generate_depth_image(model_path, save_path):
         for f in files:
             file_path = os.path.join(root, f)
             np_path  = os.path.join(cur_path, f[:f.find('.')] + '.npy')
-            # origin_img_path = os.path.join(cur_path, f[:f.find('.')] + '_origin.png')
+            origin_img_path = os.path.join(cur_path, f[:f.find('.')] + '_origin.png')
             print(file_path)
             pcd = o3d.io.read_point_cloud(file_path)
             points = np.asarray(pcd.points)
@@ -39,6 +40,7 @@ def generate_depth_image(model_path, save_path):
             matrix *= ratio
             matrix = matrix.astype('uint8')
             matrix = cv2.medianBlur(matrix, 5)
+            matrix = straightening_img(matrix)
             sobelx = cv2.Sobel(matrix,cv2.CV_64F,1,0,ksize=5)
             sobely = cv2.Sobel(matrix,cv2.CV_64F,0,1,ksize=5)
             sobel = np.sqrt(sobelx * sobelx + sobely * sobely)
@@ -59,4 +61,4 @@ def generate_depth_image(model_path, save_path):
             np.save(np_path, matrix)
             # cv2.imwrite(origin_img_path, matrix)
 
-generate_depth_image('./PointsPoisson/', './Data/')
+generate_depth_image('./PointsPoisson/Train', './Data/')

@@ -58,4 +58,4 @@ def pre_processing(data_path):
       else:
         cv2.imwrite(img_path, cutted_img)
 
-pre_processing(train_data_path)
+# pre_processing(train_data_path)
