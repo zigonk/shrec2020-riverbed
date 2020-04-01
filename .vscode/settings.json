@@ -1,5 +1,6 @@
 {
   "python.pythonPath": "/home/zkn99/miniconda3/envs/shrec/bin/python",
   "python.linting.pylintEnabled": true,
-  "python.linting.enabled": true
+  "python.linting.enabled": true,
+  "python.formatting.provider": "black"
 }

@@ -14,6 +14,18 @@ def remove_black_border(gray):
   crop = gray[y:y+h,x:x+w]
   return crop
 
+def remove_black_border_numpy(matrix):
+  gray = matrix.copy()
+  gray *= 255/gray.max()
+  gray = gray.astype('uint8')
+  _,thresh = cv2.threshold(gray,1,255,cv2.THRESH_BINARY)
+  contours = cv2.findContours(thresh,cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_SIMPLE)
+  cnt = contours[0]
+  x,y,w,h = cv2.boundingRect(cnt)
+  crop = matrix[y:y+h,x:x+w]
+  return crop
+
+
 def check_quality(ratio_black_pix, ratio_size):
   if (ratio_black_pix > 0.7): return False
   if (ratio_size > 3): return False

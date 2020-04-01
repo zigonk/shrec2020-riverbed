@@ -63,14 +63,42 @@ def orientation(p1, p2, p3):
     # 0 : Colinear points
     # 1 : Clockwise points
     # 2 : Counterclockwise
-    val = (float(p2.y - p1.y) * (p3.x - p2.x)) - \
-           (float(p2.x - p1.x) * (p3.y - p2.y))
+    val = ((p2[1] - p1[1]) * (p3[0] - p2[0])) - \
+           ((p2[0] - p1[0]) * (p3[1] - p2[1]))
     if (val > 0):
         return 1
     elif (val < 0):
-        return 2
+        return -1
     else:
-        return 0
+        return 1
+
+def count_angle_orientation_and_distance(x = [], start_x = 5, end_x = 0, start_y = 5, end_y = 0):
+    cnt = 0
+    momentum = 0
+    dist_list = []
+    angle_list = []
+    if (end_x == 0): end_x = x.shape[0] - 5
+    if (end_y == 0): end_y = x.shape[1] - 5
+    for idx in range(start_x, end_x):
+        for idy in range(start_y, end_y):
+            p1 = np.asarray([idy - 1, x[idx][idy - 1]])
+            p2 = np.asarray([idy    , x[idx][idy]])
+            p3 = np.asarray([idy + 1, x[idx][idy + 1]])
+            angle = angle_between_vector(p1 - p2, p3 - p2)
+            orient = orientation(p1, p2, p3)
+            if (orient == -1):
+                angle_list.append(angle)
+                if (momentum < 2 and cnt > 0):
+                    dist_list.append(cnt)
+                    cnt = 0
+                    momentum = 1
+                else:
+                    momentum /= 2
+            else:
+                angle_list.append(angle)
+                momentum += 1
+                cnt += 1
+    return angle_list, dist_list
 
 def generate_depth_image(model_path, save_path):
     if not os.path.exists(save_path):
@@ -116,28 +144,24 @@ def generate_depth_image(model_path, save_path):
             # print(matrix.min())
             # print(matrix.max())
             # matrix /= matrix.max()
-            bins = 1
-            x = np.zeros((int(matrix.shape[0]/bins) + 1, matrix.shape[1]))
-            sz = matrix.shape
+            bins = 10
+            n_bins = int(matrix.shape[0]/bins)
+            x = np.zeros((n_bins + 1, matrix.shape[1]))
+            # sz = matrix.shape
             matrix = cv2.GaussianBlur(matrix ,(5, 5), 1, borderType=cv2.BORDER_CONSTANT)
             for t in range(matrix.shape[0]):
                 x[int(t/bins)] += matrix[t]
             x /= bins
-            # plt.show()
-            # matrix = cv2.blur(matrix ,(7, 7),  borderType=cv2.BORDER_CONSTANT)
-            # matrix = cv2.blur(matrix ,(9, 9), borderType=cv2.BORDER_CONSTANT)
-            # matrix = cv2.blur(matrix ,(11, 11), borderType=cv2.BORDER_CONSTANT)
-            # matrix = cv2.blur(matrix ,(17, 17), borderType=cv2.BORDER_CONSTANT)
-            # sobelx = cv2.Sobel(matrix,cv2.CV_64F,1,0,ksize=5)
-            # sobely = cv2.Sobel(matrix,cv2.CV_64F,0,1,ksize=5)
-            # # print(sobelx.min())
-            # sobel = np.sqrt(sobelx * sobelx + sobely * sobely)
-            # sobel = sobel[50:sz[0] - 50, 50: sz[1] - 50]
-            # print(sobel.shape)
-            # x = sobel.flatten()
-            # # x /= (sobel.shape[0] * sobel.shape[1])
-            # # plt.clf()
-            # # x = x[(x >= 0) & (x < 0.15)]
+            # x *= 1000
+            angle_list, dist_list = count_angle_orientation_and_distance(x)
+            plt.clf()
+            plt.figure()
+            plt.subplot(211)
+            plt.hist(angle_list, bins=100)
+            plt.subplot(212)
+            plt.hist(dist_list, bins=7, density=True)
+            plt.axis([0, 35, 0, 1])
+            plt.savefig(fpath + '.png')
             # if (fpath.find("Class1_1") != -1 or fpath.find("Class4_1") != -1 or fpath.find("Class6_1") != -1 or fpath.find("Class8_1") != -1):
             #     sns.lineplot(data = x[10], label = f)
             # # # filtered_img = matrix - blur
@@ -161,5 +185,4 @@ def generate_depth_image(model_path, save_path):
             # cv2.imwrite(img_path, sobel)
             # cv2.imwrite(origin_img_path, matrix)
 
-generate_depth_image('./PointsPoisson/PointCloud/Train', './Data/SobelBlurHist3Filter/Train')
-plt.show()
+generate_depth_image('./PointsPoisson/PointCloud/Train', './Data/CutSize/Train')
