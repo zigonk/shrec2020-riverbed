@@ -73,12 +73,18 @@ def orientation(p1, p2, p3):
         return 1
 
 def count_angle_orientation_and_distance(x = [], start_x = 5, end_x = 0, start_y = 5, end_y = 0):
+    a = 0.3
+    lr = -1
+
     cnt = 0
     momentum = 0
     dist_list = []
     angle_list = []
     if (end_x == 0): end_x = x.shape[0] - 5
     if (end_y == 0): end_y = x.shape[1] - 5
+    last_angle = 0
+    sum = 0
+    # plt.plot(x[0], label=)
     for idx in range(start_x, end_x):
         for idy in range(start_y, end_y):
             p1 = np.asarray([idy - 1, x[idx][idy - 1]])
@@ -86,18 +92,8 @@ def count_angle_orientation_and_distance(x = [], start_x = 5, end_x = 0, start_y
             p3 = np.asarray([idy + 1, x[idx][idy + 1]])
             angle = angle_between_vector(p1 - p2, p3 - p2)
             orient = orientation(p1, p2, p3)
-            if (orient == -1):
-                angle_list.append(angle)
-                if (momentum < 2 and cnt > 0):
-                    dist_list.append(cnt)
-                    cnt = 0
-                    momentum = 1
-                else:
-                    momentum /= 2
-            else:
-                angle_list.append(angle)
-                momentum += 1
-                cnt += 1
+            # if (orient == -1):
+            # else:
     return angle_list, dist_list
 
 def generate_depth_image(model_path, save_path):
@@ -108,6 +104,7 @@ def generate_depth_image(model_path, save_path):
         if not os.path.exists(cur_path):
           os.makedirs(cur_path)
         files.sort()
+        files = ['Class1_1.pcd', 'Class1_2.pcd', 'Class4_1.pcd', 'Class4_2.pcd', 'Class6_1.pcd', 'Class6_2.pcd', 'Class8_1.pcd', 'Class8_2.pcd']
         for f in files:
             file_path = os.path.join(root, f)
             fpath  = os.path.join(cur_path, f[:f.find('.')])
@@ -132,14 +129,14 @@ def generate_depth_image(model_path, save_path):
                 x = int(p[0])
                 y = int(p[1])
                 z = p[2]
-                matrix[y][x] = max(matrix[y][x], z)
-            #     cnt[y][x] += 1
-            # cnt = np.maximum(cnt, 1)
-            # matrix /= cnt
+                matrix[y][x] = matrix[y][x] + z
+                cnt[y][x] += 1
+            cnt = np.maximum(cnt, 1)
+            matrix /= cnt
             matrix = matrix.astype(np.float32)
-            matrix = cv2.medianBlur(matrix, 5)
             matrix = straightening_img(matrix)
             matrix = remove_black_border_numpy(matrix)
+            matrix = cv2.medianBlur(matrix, 3)
             # matrix += abs(matrix.min())
             # print(matrix.min())
             # print(matrix.max())
@@ -148,27 +145,37 @@ def generate_depth_image(model_path, save_path):
             n_bins = int(matrix.shape[0]/bins)
             x = np.zeros((n_bins + 1, matrix.shape[1]))
             # sz = matrix.shape
-            matrix = cv2.GaussianBlur(matrix ,(5, 5), 1, borderType=cv2.BORDER_CONSTANT)
+            # matrix = cv2.GaussianBlur(matrix ,(5, 5), 1, borderType=cv2.BORDER_CONSTANT)
             for t in range(matrix.shape[0]):
                 x[int(t/bins)] += matrix[t]
             x /= bins
             # x *= 1000
-            angle_list, dist_list = count_angle_orientation_and_distance(x)
-            plt.clf()
-            plt.figure()
-            plt.subplot(211)
-            plt.hist(angle_list, bins=100)
-            plt.subplot(212)
-            plt.hist(dist_list, bins=7, density=True)
-            plt.axis([0, 35, 0, 1])
-            plt.savefig(fpath + '.png')
-            # if (fpath.find("Class1_1") != -1 or fpath.find("Class4_1") != -1 or fpath.find("Class6_1") != -1 or fpath.find("Class8_1") != -1):
-            #     sns.lineplot(data = x[10], label = f)
+            # plt.clf()
+            # angle_list, dist_list = count_angle_orientation_and_distance(np.asarray([x[9]]), 0, 1)
+            # plt.figure()
+            # plt.subplot(211)
+            # plt.hist(angle_list, bins=100)
+            # plt.subplot(212)
+            # plt.hist(dist_list, bins=7, density=True)
+            # plt.axis([0, 35, 0, 1])
+            # plt.savefig(fpath + '.png')
+            # plt.show()
+            # break
             # # # filtered_img = matrix - blur
             # # filtered_img = np.copy(matrix)
-            # sobel *= 255
-            # sobel[sobel > 255] = 255
-            # ratio = 255 / matrix.max()
+            sobelx = cv2.Sobel(matrix,cv2.CV_64F,1,0,ksize=5)
+            sobely = cv2.Sobel(matrix,cv2.CV_64F,0,1,ksize=5)
+            sobel = np.sqrt(sobelx * sobelx + sobely * sobely)
+            sobel *= 500
+            sobel[sobel > 255] = 255
+            plt.figure()
+            plt.subplot(211)
+            sns.lineplot(data = x[10], label = f)
+            sns.lineplot(data = x[9], label = f)
+            plt.subplot(212)
+            plt.imshow(sobel)
+            plt.hlines(105, 0, 300)
+            plt.show()
             # matrix *= ratio
             # # filtered_img *= 128 / max(abs(filtered_img.min()), filtered_img.max())
             # # filtered_img += max(abs(filtered_img.min()), filtered_img.max())
@@ -186,3 +193,4 @@ def generate_depth_image(model_path, save_path):
             # cv2.imwrite(origin_img_path, matrix)
 
 generate_depth_image('./PointsPoisson/PointCloud/Train', './Data/CutSize/Train')
+plt.show()
