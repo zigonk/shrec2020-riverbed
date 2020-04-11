@@ -35,6 +35,14 @@ def find_local_maxima(img, save_path):
 
     plt.savefig(save_path)
 
+def find_sobel(matrix):
+    sobelx = cv2.Sobel(matrix,cv2.CV_64F,1,0,ksize=5)
+    sobely = cv2.Sobel(matrix,cv2.CV_64F,0,1,ksize=5)
+    sobel = np.sqrt(sobelx * sobelx + sobely * sobely)
+    sobel *= 500
+    sobel[sobel > 255] = 255
+    return sobel
+
 def rotate(origin, point, angle):
     """
     Rotate a point counterclockwise by a given angle around a given origin.
@@ -54,7 +62,7 @@ def angle_between_vector(vector_1, vector_2):
     dot_product = np.dot(unit_vector_1, unit_vector_2)
     angle = np.arccos(dot_product)
 
-    return angle
+    return angle / math.pi
 
 def orientation(p1, p2, p3):
     # to find the orientation of
@@ -72,29 +80,131 @@ def orientation(p1, p2, p3):
     else:
         return 1
 
-def count_angle_orientation_and_distance(x = [], start_x = 5, end_x = 0, start_y = 5, end_y = 0):
-    a = 0.3
-    lr = -1
-
-    cnt = 0
-    momentum = 0
-    dist_list = []
-    angle_list = []
+def find_roi(x = [], start_x = 5, end_x = 0, start_y = 5, end_y = 0):
+    eps = 0.01
+    thresh_hold = 0.00007
     if (end_x == 0): end_x = x.shape[0] - 5
     if (end_y == 0): end_y = x.shape[1] - 5
-    last_angle = 0
-    sum = 0
-    # plt.plot(x[0], label=)
+    roi = np.zeros(x.shape)
     for idx in range(start_x, end_x):
         for idy in range(start_y, end_y):
-            p1 = np.asarray([idy - 1, x[idx][idy - 1]])
-            p2 = np.asarray([idy    , x[idx][idy]])
-            p3 = np.asarray([idy + 1, x[idx][idy + 1]])
-            angle = angle_between_vector(p1 - p2, p3 - p2)
-            orient = orientation(p1, p2, p3)
-            # if (orient == -1):
-            # else:
-    return angle_list, dist_list
+            p0 = np.asarray([idy - 1, x[idx][idy - 1]])
+            p1 = np.asarray([idy    , x[idx][idy]])
+            p2 = np.asarray([idy + 1, x[idx][idy + 1]])
+            p3 = np.asarray([idy + 2, x[idx][idy + 2]])
+            if (abs(p3[1] - p2[1]) >= eps or abs(p2[1] - p1[1]) >= eps):
+                continue
+            orient_cur = orientation(p0, p1, p2)
+            orient_nxt = orientation(p1, p2, p3)
+            if (orient_nxt == -1 and orient_cur == -1 and p1[1] <= p2[1] + 0.001):
+                roi[idx][idy] = 0
+            else:
+                roi[idx][idy] = 1
+    return roi
+
+def create_depth_image(points):
+    points = points + abs(points.min(axis = 0))
+    points *= [1000, 1000, 1]
+
+    size = points.max(axis = 0)[:-1].astype(int) + 1
+
+    matrix = np.zeros((size[1], size[0]))
+    cnt = np.zeros((size[1], size[0]))
+
+    for p in points:
+        x = int(p[0])
+        y = int(p[1])
+        z = p[2]
+        matrix[y][x] = matrix[y][x] + z
+        cnt[y][x] += 1
+    cnt = np.maximum(cnt, 1)
+    matrix /= cnt
+    matrix = matrix.astype(np.float32)
+    matrix = straightening_img(matrix)
+    matrix = remove_black_border_numpy(matrix)
+    matrix = cv2.medianBlur(matrix, 5)
+    # matrix = cv2.GaussianBlur(matrix ,(5, 5), 1, borderType=cv2.BORDER_CONSTANT)
+    return matrix
+
+def median_blur_row_only(matrix, ksize):
+    for idx in range(matrix.shape[0]):
+        row_x = matrix[idx].copy()
+        for idy in range(ksize//2, matrix.shape[1] - ksize//2):
+            left  = idy - ksize // 2
+            right = idy + ksize // 2
+            count = matrix[idx][left:right].sum()
+            if (count > ksize // 2):
+                row_x[idy] = 1
+            else:
+                row_x[idy] = 0
+        matrix[idx] = row_x
+    return matrix
+
+def expand_mask_by_row(matrix, ratio = 0.1):
+    wide = 0
+    l = 0
+    r = 0
+    for idx in range(matrix.shape[0]):
+        row_x = matrix[idx].copy()
+        for idy in range(matrix.shape[1]):
+            if (matrix[idx][idy] == 0):
+                if wide == 0: continue
+                expand = int(wide * ratio)
+                l = l - expand
+                r = r + expand
+                row_x[l:r] = 1
+                wide = 0
+            else:
+                if wide == 0:
+                    l = idy
+                    wide = 1
+                else:
+                    r = idy
+                    wide += 1
+        matrix[idx] = row_x
+    return matrix
+
+def get_wide_of_soil(roi = [[]], wide_threshhold = 3, height_threshhold = 0.003, iou_ratio = 0.7, disparity_threshhold = 0.01):
+    expand_ratio = 1 - iou_ratio
+    wide = 0
+    max_height = 0
+    min_height = 1
+    l = 0
+    r = 0
+    res = np.asarray([])
+    for idx in range(1, roi.shape[0] - 1):
+        for idy in range(roi.shape[1]):
+            if (roi[idx][idy] == 0):
+                if (wide < wide_threshhold or max_height - min_height < height_threshhold):
+                    wide = 0
+                    max_height = 0
+                    min_height = 1
+                    continue
+                elif abs(roi[idx][l] - roi[idx][r]) > disparity_threshhold:
+                    wide = 0
+                    max_height = 0
+                    min_height = 1
+                    continue
+                else:
+                    l = max(int(l - wide * expand_ratio), 0)
+                    r = min(int(r + wide * expand_ratio), roi.shape[1])
+                    prev_max = roi[idx - 1][l:r].max()
+                    next_max = roi[idx + 1][l:r].max()
+                    if (max_height > prev_max and max_height > next_max):
+                        res = np.append(res, wide)
+                    wide = 0
+                    max_height = 0
+                    min_height = 1
+            else:
+                if (wide == 0):
+                    l = idy
+                    wide = 1
+                else:
+                    r = idy
+                    wide += 1
+                max_height = max(max_height, roi[idx][idy])
+                min_height = min(min_height, roi[idx][idy])
+    return res
 
 def generate_depth_image(model_path, save_path):
     if not os.path.exists(save_path):
@@ -104,7 +214,9 @@ def generate_depth_image(model_path, save_path):
         if not os.path.exists(cur_path):
           os.makedirs(cur_path)
         files.sort()
-        files = ['Class1_1.pcd', 'Class1_2.pcd', 'Class4_1.pcd', 'Class4_2.pcd', 'Class6_1.pcd', 'Class6_2.pcd', 'Class8_1.pcd', 'Class8_2.pcd']
+        # files = ['Class1_1.pcd', 'Class1_2.pcd', 'Class4_1.pcd', 'Class4_2.pcd', 'Class6_1.pcd', 'Class6_2.pcd', 'Class8_1.pcd', 'Class8_2.pcd']
+        # files = ['Class1_2.pcd', 'Class4_2.pcd', 'Class6_2.pcd', 'Class8_2.pcd']
+        # files = ['Class1_1.pcd', 'Class8_1.pcd']
         for f in files:
             file_path = os.path.join(root, f)
             fpath  = os.path.join(cur_path, f[:f.find('.')])
@@ -114,47 +226,31 @@ def generate_depth_image(model_path, save_path):
             print(f)
             pcd = o3d.io.read_point_cloud(file_path)
             points = np.asarray(pcd.points)
-            # matrix = np.load(file_path)
-            points = points + abs(points.min(axis = 0))
-            points *= [1000, 1000, 1]
-
-            size = points.max(axis = 0)[:-1].astype(int) + 1
-            out.write(f + '\n')
-            out.write(str(size) + '\n')
-
-            matrix = np.zeros((size[1], size[0]))
-            cnt = np.zeros((size[1], size[0]))
-
-            for p in points:
-                x = int(p[0])
-                y = int(p[1])
-                z = p[2]
-                matrix[y][x] = matrix[y][x] + z
-                cnt[y][x] += 1
-            cnt = np.maximum(cnt, 1)
-            matrix /= cnt
-            matrix = matrix.astype(np.float32)
-            matrix = straightening_img(matrix)
-            matrix = remove_black_border_numpy(matrix)
-            matrix = cv2.medianBlur(matrix, 3)
-            # matrix += abs(matrix.min())
-            # print(matrix.min())
-            # print(matrix.max())
-            # matrix /= matrix.max()
-            bins = 10
+            matrix = create_depth_image(points)
+            bins = 5
             n_bins = int(matrix.shape[0]/bins)
-            x = np.zeros((n_bins + 1, matrix.shape[1]))
-            # sz = matrix.shape
-            # matrix = cv2.GaussianBlur(matrix ,(5, 5), 1, borderType=cv2.BORDER_CONSTANT)
+            avg_side_cut = np.zeros((n_bins + 1, matrix.shape[1]))
             for t in range(matrix.shape[0]):
-                x[int(t/bins)] += matrix[t]
-            x /= bins
+                avg_side_cut[int(t/bins)] += matrix[t]
+            avg_side_cut /= bins
+            roi = find_roi(avg_side_cut)
+            # roi = expand_mask_by_row(roi)
+            roi = median_blur_row_only(roi, 3)
+            roi *= avg_side_cut
+            cnt = get_wide_of_soil(roi)
+            # plt.clf()
+            # plt.plot(roi[5])
+            plt.plot(avg_side_cut[5])
+            plt.show()
+            # plt.clf()
+            # plt.hist(cnt, range=(0, 35), bins = 35, density=True)
+            # plt.savefig(img_path)
             # x *= 1000
             # plt.clf()
             # angle_list, dist_list = count_angle_orientation_and_distance(np.asarray([x[9]]), 0, 1)
             # plt.figure()
             # plt.subplot(211)
-            # plt.hist(angle_list, bins=100)
+            # plt.show()
             # plt.subplot(212)
             # plt.hist(dist_list, bins=7, density=True)
             # plt.axis([0, 35, 0, 1])
@@ -163,19 +259,15 @@ def generate_depth_image(model_path, save_path):
             # break
             # # # filtered_img = matrix - blur
             # # filtered_img = np.copy(matrix)
-            sobelx = cv2.Sobel(matrix,cv2.CV_64F,1,0,ksize=5)
-            sobely = cv2.Sobel(matrix,cv2.CV_64F,0,1,ksize=5)
-            sobel = np.sqrt(sobelx * sobelx + sobely * sobely)
-            sobel *= 500
-            sobel[sobel > 255] = 255
-            plt.figure()
-            plt.subplot(211)
-            sns.lineplot(data = x[10], label = f)
-            sns.lineplot(data = x[9], label = f)
-            plt.subplot(212)
-            plt.imshow(sobel)
-            plt.hlines(105, 0, 300)
-            plt.show()
+            # plt.figure()
+            # plt.subplot(111)
+            # sns.lineplot(data = x[9], label = f)
+            # plt.subplot(212)
+            # sns.lineplot(data = x[9], label = f)
+            # count_angle_orientation_and_distance(np.asarray([x[9]]), 0, 1)
+            # plt.imshow(sobel)
+            # plt.hlines(105, 0, 300)
+            # plt.show()
             # matrix *= ratio
             # # filtered_img *= 128 / max(abs(filtered_img.min()), filtered_img.max())
             # # filtered_img += max(abs(filtered_img.min()), filtered_img.max())
@@ -192,5 +284,5 @@ def generate_depth_image(model_path, save_path):
             # cv2.imwrite(img_path, sobel)
             # cv2.imwrite(origin_img_path, matrix)
 
-generate_depth_image('./PointsPoisson/PointCloud/Train', './Data/CutSize/Train')
+generate_depth_image('./PointsPoisson/PointCloud/Train', './Data/CutSide/Train')
 plt.show()

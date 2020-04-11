@@ -104,10 +104,11 @@ def generate_depth_image(model_path, save_path):
                 x = int(p[0])
                 y = int(p[1])
                 z = p[2]
-                matrix[y][x] = max(matrix[y][x], z)
-            #     cnt[y][x] += 1
-            # cnt = np.maximum(cnt, 1)
-            # matrix /= cnt
+                # matrix[y][x] = max(matrix[y][x], z)
+                matrix[y][x] = matrix[y][x] + z
+                cnt[y][x] += 1
+            cnt = np.maximum(cnt, 1)
+            matrix /= cnt
             matrix = matrix.astype(np.float32)
             matrix = cv2.medianBlur(matrix, 5)
             matrix = straightening_img(matrix)
@@ -116,13 +117,13 @@ def generate_depth_image(model_path, save_path):
             # print(matrix.min())
             # print(matrix.max())
             # matrix /= matrix.max()
-            bins = 1
-            x = np.zeros((int(matrix.shape[0]/bins) + 1, matrix.shape[1]))
-            sz = matrix.shape
-            matrix = cv2.GaussianBlur(matrix ,(5, 5), 1, borderType=cv2.BORDER_CONSTANT)
-            for t in range(matrix.shape[0]):
-                x[int(t/bins)] += matrix[t]
-            x /= bins
+            # bins = 1
+            # x = np.zeros((int(matrix.shape[0]/bins) + 1, matrix.shape[1]))
+            # sz = matrix.shape
+            # matrix = cv2.GaussianBlur(matrix ,(5, 5), 1, borderType=cv2.BORDER_CONSTANT)
+            # for t in range(matrix.shape[0]):
+            #     x[int(t/bins)] += matrix[t]
+            # x /= bins
             # plt.show()
             # matrix = cv2.blur(matrix ,(7, 7),  borderType=cv2.BORDER_CONSTANT)
             # matrix = cv2.blur(matrix ,(9, 9), borderType=cv2.BORDER_CONSTANT)
@@ -162,4 +163,3 @@ def generate_depth_image(model_path, save_path):
             # cv2.imwrite(origin_img_path, matrix)
 
 generate_depth_image('./PointsPoisson/PointCloud/Train', './Data/SobelBlurHist3Filter/Train')
-plt.show()
