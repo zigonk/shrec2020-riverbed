@@ -127,7 +127,7 @@ def remove_border(img):
       if (img[i][j] != max_val ) and (img[i][j + 1] == max_val):
         crop_right = min(crop_right, j)
         break
-  return img[crop_top:crop_bot, crop_left:crop_right]
+  return img[crop_top + 10 : crop_bot - 10, crop_left + 10 : crop_right - 10]
 
 def cvtBinary(img):
   max_val = img.max()
@@ -159,12 +159,17 @@ def fill_by_circle_topdown(img, sz, thresh_hold):
   accept_num_points = kernel.sum() * (1 - thresh_hold)
   h, w = img.shape
   res = 0
-  for i in range(h - sz):
-    for j in range(w - sz):
+  for i in range(1, h - sz - 1):
+    for j in range(1, w - sz - 1):
       corr = np.bitwise_and(kernel, img[i:i+sz, j:j+sz])
       if (corr.sum() >= accept_num_points):
-        res += 1
-  return res
+        if (img[i - 1: i+sz+1, j:j-1+sz+1].max() == 2):
+          img[i:i+sz, j:j+sz] = corr * 2
+          continue
+        else:
+          res += 1
+          img[i:i+sz, j:j+sz] = corr * 2
+  return res, img
 
 def classify_1(x):
   if (len(x) <= 3 or x[1] < 1e-3):
@@ -175,6 +180,7 @@ def classify_1(x):
     class_num = 6
   else:
     class_num = 8
+  return class_num
 
 def generate_depth_image(model_path, save_path):
     if not os.path.exists(save_path):
@@ -184,7 +190,15 @@ def generate_depth_image(model_path, save_path):
         if not os.path.exists(cur_path):
           os.makedirs(cur_path)
         files.sort()
+        
         for f in files:
+            model_num = int((f.split('.')[0]).split('_')[1])
+            if model_num >= 100:
+              continue
+            if model_num >= 10 and model_num <= 24:
+              continue
+            if model_num == 1 or model_num == 2:
+              continue
             file_path = os.path.join(root, f)
             fpath  = os.path.join(cur_path, f[:f.find('.')])
             np_path  = os.path.join(cur_path, f[:f.find('.')] + '.npy')
@@ -215,21 +229,48 @@ def generate_depth_image(model_path, save_path):
             # quant = color_quantization(quant, 4)
             quant = color_quantization(quant, 2)
             quant = cvtBinary(quant)
-            quant = blur_multiple_time(quant, 3, 2)
+            quant = blur_multiple_time(quant, 3, 1)
+            quant //= 255
 
             x = []
-            i = 31
-            while True:
-              i -= 2
-              num_c = fill_by_circle(quant, i, 0.01)
-              if (num_c == 0):
+            i = 50
+            while i > 5:
+              i -= 1
+              num_c, quant = fill_by_circle_topdown(quant, i, 0.05)
+              if (num_c == 0 or i > 35):
                 continue
-              x.append(fill_by_circle(quant, i, 0.01), i)
+              x.append((num_c, i))
             w, h = quant.shape
             sz = w * h
+            class1 = class4 = class6 = class8 = 0
             for num_c, type_c in x:
-              print(num_c, type_c, num_c*type_c / sz)
-
+              kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE,(type_c,type_c))
+              total = kernel.sum()
+              fill_ratio = round(num_c*total / sz, 4)
+              if (type_c >= 19):
+                class8 += fill_ratio
+              elif (type_c > 15):
+                class6 += fill_ratio
+              elif (type_c > 13):
+                class4 += fill_ratio
+              elif (type_c >= 7):
+                class1 += fill_ratio
+              # print(num_c, type_c, round(num_c*total / sz, 4))
+            model_num = int((f.split('.')[0]).split('_')[1])
+            if (class8 > 0.02):
+              result[model_num] = 8
+              class_num = 8
+            elif (class6 > 0):
+              result[model_num] = 6
+              class_num = 6
+            elif (class4 > 0):
+              result[model_num] = 4
+              class_num = 4
+            elif (class1 > 0):
+              result[model_num] = 1
+              class_num = 1
+            print(class1, class4, class6, class8)
+            quant *= 255
 
             # x = []
             # i = 7
@@ -323,5 +364,8 @@ def generate_depth_image(model_path, save_path):
             # cv2.imwrite(fpath + '_sq.png', visualize)
             # cv2.imwrite(fpath + '_.png', quant)
             # cv2.imwrite(origin_img_path, hpass)
-
-generate_depth_image('./DepthImage/Train', './Data/ReTest_HighPass/Circle/Train')
+result = np.zeros(241)
+generate_depth_image('./DepthImage/Test', './Data/ReTest_HighPass/Circle_TopDown/Test')
+# out = open("./result.txt", "w")
+# for val in result:
+#   out.write(val)
