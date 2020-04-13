@@ -89,6 +89,7 @@ def generate_depth_image(model_path, save_path):
             print(f)
             pcd = o3d.io.read_point_cloud(file_path)
             points = np.asarray(pcd.points)
+            print(points)
             # matrix = np.load(file_path)
             points = points + abs(points.min(axis = 0))
             points *= [1000, 1000, 1]
