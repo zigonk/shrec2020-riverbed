@@ -1,7 +1,7 @@
 import os
 import numpy as np
 
-classify_path = './Data/ReTest_HighPass/Circle_TopDown/Test'
+classify_path = './Circle_TopDown/Test'
 
 result = np.zeros(241, dtype=int)
 for class_num in os.listdir(classify_path):
